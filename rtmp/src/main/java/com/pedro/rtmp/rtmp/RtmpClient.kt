@@ -15,10 +15,7 @@ import com.pedro.rtmp.utils.ConnectCheckerRtmp
 import com.pedro.rtmp.utils.CreateSSLSocket
 import com.pedro.rtmp.utils.RtmpConfig
 import java.io.*
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.net.SocketAddress
-import java.net.SocketTimeoutException
+import java.net.*
 import java.nio.ByteBuffer
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -142,21 +139,25 @@ class RtmpClient(private val connectCheckerRtmp: ConnectCheckerRtmp) {
       thread = Executors.newSingleThreadExecutor()
       thread?.execute post@{
         try {
+          Log.d(TAG, "connection 1")
           if (!establishConnection()) {
             connectCheckerRtmp.onConnectionFailedRtmp("Handshake failed")
             return@post
           }
+          Log.d(TAG, "connection 2")
           val writer = this.writer ?: throw IOException("Invalid writer, Connection failed")
           commandsManager.sendConnect("", writer)
           //read packets until you did success connection to server and you are ready to send packets
+          Log.d(TAG, "connection 3")
           while (!Thread.interrupted() && !publishPermitted) {
             //Handle all command received and send response for it.
             handleMessages()
           }
+          Log.d(TAG, "connection 4")
           //read packet because maybe server want send you something while streaming
           handleServerPackets()
         } catch (e: Exception) {
-          Log.e(TAG, "connection error", e)
+          Log.e(TAG, e.message + e.stackTraceToString() ?: "")
           connectCheckerRtmp.onConnectionFailedRtmp("Error configure stream, ${e.message}")
           return@post
         }
@@ -203,19 +204,31 @@ class RtmpClient(private val connectCheckerRtmp: ConnectCheckerRtmp) {
   @Throws(IOException::class)
   private fun establishConnection(): Boolean {
     val socket: Socket
+    Log.d(TAG, "handShake 1")
     if (!tlsEnabled) {
+      Log.d(TAG, "handShake 1.2")
       socket = Socket()
-      val socketAddress: SocketAddress = InetSocketAddress(commandsManager.host, commandsManager.port)
-      socket.connect(socketAddress, 5000)
+      socket
+      val inet = InetSocketAddress(commandsManager.host, commandsManager.port)
+      val socketAddress: SocketAddress = inet
+      Log.d(TAG, "handShake 1.4::${InetAddress.getByName(commandsManager.host).address.joinToString()}")
+      socket.connect(socketAddress, 500000).apply {
+
+        Log.d(TAG, "handShake 1.5")
+      }
     } else {
+      Log.d(TAG, "handShake 1.8")
       socket = CreateSSLSocket.createSSlSocket(commandsManager.host, commandsManager.port) ?: throw IOException("Socket creation failed")
     }
+    Log.d(TAG, "handShake 2")
     socket.soTimeout = 5000
     val reader = BufferedInputStream(socket.getInputStream())
     val writer = BufferedOutputStream(socket.getOutputStream())
     val timestamp = System.currentTimeMillis() / 1000
+    Log.d(TAG, "handShake 3")
     val handshake = Handshake()
     if (!handshake.sendHandshake(reader, writer)) return false
+    Log.d(TAG, "handShake 4")
     commandsManager.timestamp = timestamp.toInt()
     commandsManager.startTs = System.nanoTime() / 1000
     connectionSocket = socket
